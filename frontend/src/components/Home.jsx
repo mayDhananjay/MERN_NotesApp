@@ -376,7 +376,7 @@ export default function App() {
         return;
       }
       setError("");
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL} /api/notes`, {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/notes`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
       setNotes(data || []);
