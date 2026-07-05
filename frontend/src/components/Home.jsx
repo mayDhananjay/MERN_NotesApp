@@ -2,6 +2,7 @@
 
 
 
+<<<<<<< HEAD
 // import React, { useEffect, useState } from 'react';
 // import axios from 'axios';
 // import { 
@@ -233,6 +234,8 @@
 
 // cdoooooo
 
+=======
+>>>>>>> bf02bd5 (Add start script)
 
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -244,7 +247,9 @@ import {
   AlertCircle,
   Plus,
   Pin,
-  X
+  X,
+  ListTodo,
+  ListOrdered
 } from 'lucide-react';
 
 // Beautiful light pastel color presets matching the aesthetic of classic physical memo pads
@@ -353,11 +358,25 @@ export default function App() {
   // Add form fields
   const [addTitle, setAddTitle] = useState("");
   const [addDescription, setAddDescription] = useState("");
+  const [addIsChecklist, setAddIsChecklist] = useState(false);
+  const [addIsNumbered, setAddIsNumbered] = useState(false);
 
   // Edit form fields
   const [editId, setEditId] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editIsChecklist, setEditIsChecklist] = useState(false);
+  const [editIsNumbered, setEditIsNumbered] = useState(false);
+
+  // Note configurations (for checklist/numbering) persisted in localStorage
+  const [noteConfigs, setNoteConfigs] = useState(() => {
+    try {
+      const saved = localStorage.getItem("notes_configs_map");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Pinned note IDs persisted in localStorage
   const [pinnedIds, setPinnedIds] = useState(() => {
@@ -378,7 +397,7 @@ export default function App() {
         return;
       }
       setError("");
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/notes`, {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL || ""}/api/notes`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
       setNotes(data || []);
@@ -399,7 +418,7 @@ export default function App() {
         setError("No Auth Token found. Please log in first.");
         return;
       }
-      await axios.delete(`${import.meta.env.VITE_API_URL}/api/notes/${id}`, {
+      await axios.delete(`${import.meta.env.VITE_API_URL || ""}/api/notes/${id}`, {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       setNotes(notes.filter((note) => note._id !== id));
@@ -423,11 +442,25 @@ export default function App() {
         return;
       }
 
-      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/notes`, {
+      const { data } = await axios.post(`${import.meta.env.VITE_API_URL || ""}/api/notes`, {
         title: addTitle,
         description: addDescription
       }, {
         headers: { Authorization: `Bearer ${activeToken}` }
+      });
+
+      // Save note configuration (checklist, numbering)
+      setNoteConfigs((prev) => {
+        const updated = {
+          ...prev,
+          [data._id]: {
+            isChecklist: addIsChecklist,
+            isNumbered: addIsNumbered,
+            checkedIndices: []
+          }
+        };
+        localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+        return updated;
       });
 
       // Add new note to the list
@@ -437,6 +470,8 @@ export default function App() {
       setIsAddModalOpen(false);
       setAddTitle("");
       setAddDescription("");
+      setAddIsChecklist(false);
+      setAddIsNumbered(false);
       setError("");
     } catch (err) {
       setError("Failed to create Note");
@@ -458,11 +493,25 @@ export default function App() {
         return;
       }
 
-      const { data } = await axios.put(`${import.meta.env.VITE_API_URL}/api/notes/${editId}`, {
+      const { data } = await axios.put(`${import.meta.env.VITE_API_URL || ""}/api/notes/${editId}`, {
         title: editTitle,
         description: editDescription
       }, {
         headers: { Authorization: `Bearer ${activeToken}` }
+      });
+
+      // Update note configuration (checklist, numbering)
+      setNoteConfigs((prev) => {
+        const updated = {
+          ...prev,
+          [editId]: {
+            ...(prev[editId] || { checkedIndices: [] }),
+            isChecklist: editIsChecklist,
+            isNumbered: editIsNumbered
+          }
+        };
+        localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+        return updated;
       });
 
       // Update the modified note in the list
@@ -473,6 +522,8 @@ export default function App() {
       setEditId("");
       setEditTitle("");
       setEditDescription("");
+      setEditIsChecklist(false);
+      setEditIsNumbered(false);
       setError("");
     } catch (err) {
       setError("Failed to edit Note");
@@ -498,6 +549,11 @@ export default function App() {
   const renderNoteCard = (note, index) => {
     const isPinned = pinnedIds.includes(note._id);
     const colorPreset = colors[index % colors.length];
+    
+    // Read config for this note
+    const config = noteConfigs[note._id] || { isChecklist: false, isNumbered: false, checkedIndices: [] };
+    const showListMode = config.isChecklist || config.isNumbered;
+    const lines = note.description ? note.description.split('\n') : [];
 
     return (
       <div 
@@ -511,15 +567,64 @@ export default function App() {
         {/* Glowing light badge accent */}
         <div className={`absolute top-4 right-4 w-1.5 h-1.5 rounded-full ${colorPreset.badgeBg} group-hover:scale-125 transition-all duration-300`} />
 
-        {/* Pin note button */}
-        <button 
-          onClick={() => togglePin(note._id)}
-          className="absolute top-3 right-8 p-1.5 rounded-full hover:bg-stone-200/50 active:scale-90 transition-all cursor-pointer"
-          title={isPinned ? "Unpin Note" : "Pin Note"}
-          id={`pin-button-${note._id}`}
-        >
-          <Pin className={`w-4 h-4 transition-transform duration-200 ${isPinned ? "text-amber-600 fill-amber-500 rotate-45" : "text-stone-400 hover:text-stone-600 hover:scale-110"}`} />
-        </button>
+        {/* Action Panel for Format Toggles and Pin */}
+        <div className="absolute top-3 right-8 flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity duration-200">
+          {/* Toggle Checklist */}
+          <button
+            onClick={() => {
+              setNoteConfigs((prev) => {
+                const current = prev[note._id] || { isChecklist: false, isNumbered: false, checkedIndices: [] };
+                const updated = {
+                  ...prev,
+                  [note._id]: {
+                    ...current,
+                    isChecklist: !current.isChecklist,
+                  }
+                };
+                localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+                return updated;
+              });
+            }}
+            className="p-1.5 rounded-full hover:bg-stone-200/50 active:scale-90 transition-all cursor-pointer"
+            title={config.isChecklist ? "Disable Checkboxes" : "Enable Checkboxes"}
+            id={`toggle-checklist-button-${note._id}`}
+          >
+            <ListTodo className={`w-4 h-4 transition-transform duration-200 ${config.isChecklist ? "text-amber-600 font-bold scale-110" : "text-stone-400 hover:text-stone-600 hover:scale-110"}`} />
+          </button>
+
+          {/* Toggle Numbered Points */}
+          <button
+            onClick={() => {
+              setNoteConfigs((prev) => {
+                const current = prev[note._id] || { isChecklist: false, isNumbered: false, checkedIndices: [] };
+                const updated = {
+                  ...prev,
+                  [note._id]: {
+                    ...current,
+                    isNumbered: !current.isNumbered,
+                  }
+                };
+                localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+                return updated;
+              });
+            }}
+            className="p-1.5 rounded-full hover:bg-stone-200/50 active:scale-90 transition-all cursor-pointer"
+            title={config.isNumbered ? "Disable Numbering" : "Enable Numbering"}
+            id={`toggle-numbered-button-${note._id}`}
+          >
+            <ListOrdered className={`w-4 h-4 transition-transform duration-200 ${config.isNumbered ? "text-amber-600 font-bold scale-110" : "text-stone-400 hover:text-stone-600 hover:scale-110"}`} />
+          </button>
+
+          {/* Pin note button */}
+          <button 
+            onClick={() => togglePin(note._id)}
+            className="p-1.5 rounded-full hover:bg-stone-200/50 active:scale-90 transition-all cursor-pointer"
+            title={isPinned ? "Unpin Note" : "Pin Note"}
+            id={`pin-button-${note._id}`}
+          >
+            <Pin className={`w-4 h-4 transition-transform duration-200 ${isPinned ? "text-amber-600 fill-amber-500 rotate-45" : "text-stone-400 hover:text-stone-600 hover:scale-110"}`} />
+          </button>
+        </div>
 
         <div className="pt-2">
           {/* Note Title */}
@@ -527,10 +632,58 @@ export default function App() {
             {note.title || <span className="italic text-stone-400 font-normal">Untitled Note</span>}
           </h3>
           
-          {/* Note Description */}
-          <p className={`text-stone-800/90 text-sm leading-relaxed mb-6 font-normal line-clamp-5 whitespace-pre-wrap ${colorPreset.descColor}`}>
-            {note.description}
-          </p>
+          {/* Note Description / List */}
+          {showListMode ? (
+            <div className="space-y-2 mb-6 max-h-48 overflow-y-auto pr-1">
+              {lines.map((line, idx) => {
+                // Skip rendering trailing single empty line to keep visual layout tight
+                if (line.trim() === "" && idx === lines.length - 1 && lines.length > 1) return null;
+                
+                const isChecked = config.checkedIndices?.includes(idx);
+                
+                return (
+                  <div key={idx} className="flex items-start gap-2.5 py-0.5">
+                    {config.isChecklist && (
+                      <input
+                        type="checkbox"
+                        checked={!!isChecked}
+                        onChange={() => {
+                          const currentChecked = config.checkedIndices || [];
+                          const nextChecked = currentChecked.includes(idx)
+                            ? currentChecked.filter((i) => i !== idx)
+                            : [...currentChecked, idx];
+                          
+                          setNoteConfigs((prev) => {
+                            const updated = {
+                              ...prev,
+                              [note._id]: {
+                                ...(prev[note._id] || { isChecklist: true, isNumbered: false }),
+                                checkedIndices: nextChecked
+                              }
+                            };
+                            localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+                            return updated;
+                          });
+                        }}
+                        className="mt-1 h-4 w-4 rounded-sm border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-500 shrink-0"
+                      />
+                    )}
+                    
+                    <span className={`text-stone-800/90 text-sm leading-relaxed font-normal ${isChecked ? 'line-through text-stone-400/70 italic' : colorPreset.descColor}`}>
+                      {config.isNumbered && (
+                        <span className="font-bold mr-1.5 text-stone-500/80 font-mono text-xs">{idx + 1}.</span>
+                      )}
+                      {line || <span className="text-stone-400/40 italic">(empty item)</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className={`text-stone-800/90 text-sm leading-relaxed mb-6 font-normal line-clamp-5 whitespace-pre-wrap ${colorPreset.descColor}`}>
+              {note.description}
+            </p>
+          )}
         </div>
 
         {/* Footer metadata and action buttons */}
@@ -548,6 +701,10 @@ export default function App() {
                 setEditId(note._id);
                 setEditTitle(note.title);
                 setEditDescription(note.description);
+                // Pre-fill the edit checkboxes from noteConfig
+                const noteConfig = noteConfigs[note._id] || { isChecklist: false, isNumbered: false };
+                setEditIsChecklist(noteConfig.isChecklist);
+                setEditIsNumbered(noteConfig.isNumbered);
                 setIsEditModalOpen(true);
               }}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold ${colorPreset.buttonText} ${colorPreset.buttonBg} rounded-lg transition-all duration-200 cursor-pointer shadow-xs active:scale-95`}
@@ -674,7 +831,11 @@ export default function App() {
                 <h2 className="text-lg font-black text-stone-900">Add New Note</h2>
               </div>
               <button 
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setAddIsChecklist(false);
+                  setAddIsNumbered(false);
+                }}
                 className="text-stone-400 hover:text-stone-700 p-1 rounded-lg hover:bg-stone-100 cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -702,16 +863,49 @@ export default function App() {
                   rows={4}
                   value={addDescription}
                   onChange={(e) => setAddDescription(e.target.value)}
-                  placeholder="Write your note description here..."
+                  placeholder="Write your note description here... (Use new lines for points/items)"
                   className="w-full bg-stone-50/50 border border-stone-200 text-stone-900 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
                   required
                 />
               </div>
 
+              {/* Note Formatting Options */}
+              <div className="grid grid-cols-2 gap-4 py-2 border-t border-b border-stone-100 my-4">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={addIsChecklist}
+                    onChange={(e) => setAddIsChecklist(e.target.checked)}
+                    className="h-4 w-4 rounded-sm border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-stone-800">Add Checkboxes</p>
+                    <p className="text-[11px] text-stone-500">Each line gets a checkbox</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={addIsNumbered}
+                    onChange={(e) => setAddIsNumbered(e.target.checked)}
+                    className="h-4 w-4 rounded-sm border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-stone-800">Numbered Points</p>
+                    <p className="text-[11px] text-stone-500">Each line starts with 1, 2, 3...</p>
+                  </div>
+                </label>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
                 <button 
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setAddIsChecklist(false);
+                    setAddIsNumbered(false);
+                  }}
                   className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200/80 text-stone-700 font-semibold rounded-xl text-sm transition-colors cursor-pointer"
                 >
                   Cancel
@@ -768,10 +962,39 @@ export default function App() {
                   rows={4}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Write your note description here..."
+                  placeholder="Write your note description here... (Use new lines for points/items)"
                   className="w-full bg-stone-50/50 border border-stone-200 text-stone-900 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
                   required
                 />
+              </div>
+
+              {/* Note Formatting Options */}
+              <div className="grid grid-cols-2 gap-4 py-2 border-t border-b border-stone-100 my-4">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={editIsChecklist}
+                    onChange={(e) => setEditIsChecklist(e.target.checked)}
+                    className="h-4 w-4 rounded-sm border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-stone-800">Add Checkboxes</p>
+                    <p className="text-[11px] text-stone-500">Each line gets a checkbox</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={editIsNumbered}
+                    onChange={(e) => setEditIsNumbered(e.target.checked)}
+                    className="h-4 w-4 rounded-sm border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-stone-800">Numbered Points</p>
+                    <p className="text-[11px] text-stone-500">Each line starts with 1, 2, 3...</p>
+                  </div>
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
@@ -797,3 +1020,4 @@ export default function App() {
     </div>
   );
 }
+
