@@ -14,7 +14,7 @@ const app = express();
 app.use(cors());
 app.use(
   cors({
-    origin: "https://your-vercel-app.vercel.app",
+    origin: "https://mern-notes-app-blush.vercel.app/login",
     credentials: true,
   })
 );
