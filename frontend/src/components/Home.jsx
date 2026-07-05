@@ -376,7 +376,7 @@ export default function App() {
         return;
       }
       setError("");
-      const { data } = await axios.get("/api/notes", {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL} /api/notes`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
       setNotes(data || []);
@@ -397,7 +397,7 @@ export default function App() {
         setError("No Auth Token found. Please log in first.");
         return;
       }
-      await axios.delete(`/api/notes/${id}`, {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/api/notes/${id}`, {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       setNotes(notes.filter((note) => note._id !== id));
@@ -421,7 +421,7 @@ export default function App() {
         return;
       }
 
-      const { data } = await axios.post("/api/notes", {
+      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/notes`, {
         title: addTitle,
         description: addDescription
       }, {
@@ -456,7 +456,7 @@ export default function App() {
         return;
       }
 
-      const { data } = await axios.put(`/api/notes/${editId}`, {
+      const { data } = await axios.put(`${import.meta.env.VITE_API_URL}/api/notes/${editId}`, {
         title: editTitle,
         description: editDescription
       }, {
