@@ -3,11 +3,20 @@ import dotenv from 'dotenv';
 import { connectDb } from './config/db.js';
 import authRoutes from './routes/auth.js'
 import noteRoutes from './routes/notes.js'
+import cors from "cors";
+
+app.use(cors());
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
 
 const app = express();
+app.use(
+  cors({
+    origin: "https://your-vercel-app.vercel.app",
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
