@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { 
   Pencil, 
@@ -108,6 +107,7 @@ const colors = [
 
 export default function App() {
   const [notes, setNotes] = useState([]);
+  
   const [error, setError] = useState("");
   
   // Auth Token read silently from localStorage
@@ -122,6 +122,7 @@ export default function App() {
   const [addDescription, setAddDescription] = useState("");
   const [addIsChecklist, setAddIsChecklist] = useState(false);
   const [addIsNumbered, setAddIsNumbered] = useState(false);
+  const [addPriority, setAddPriority] = useState("medium");
 
   // Edit form fields
   const [editId, setEditId] = useState("");
@@ -129,11 +130,22 @@ export default function App() {
   const [editDescription, setEditDescription] = useState("");
   const [editIsChecklist, setEditIsChecklist] = useState(false);
   const [editIsNumbered, setEditIsNumbered] = useState(false);
+  const [editPriority, setEditPriority] = useState("medium");
 
   // Note configurations (for checklist/numbering) persisted in localStorage
   const [noteConfigs, setNoteConfigs] = useState(() => {
     try {
       const saved = localStorage.getItem("notes_configs_map");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Priorities map persisted in localStorage
+  const [notePriorities, setNotePriorities] = useState(() => {
+    try {
+      const saved = localStorage.getItem("notes_priorities_map");
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -150,25 +162,47 @@ export default function App() {
     }
   });
 
+  // Priority filter state
+  const [priorityFilter, setPriorityFilter] = useState("all");
+
+  // Helper to resolve note priority (implicit fallback included)
+  const getNotePriority = (note) => {
+    const savedPriority = notePriorities[note._id];
+    if (savedPriority) return savedPriority;
+
+    const index = notes.findIndex((n) => n._id === note._id);
+    const colorIndex = index >= 0 ? (index % colors.length) : 0;
+    if ([1, 2, 6].includes(colorIndex)) {
+      return 'low';
+    } else if ([3, 7].includes(colorIndex)) {
+      return 'high';
+    } else {
+      return 'medium';
+    }
+  };
+
   // Fetch initial notes
   const fetchNotes = async () => {
     try {
       const activeToken = localStorage.getItem("token");
       if (!activeToken) {
-        setError("No Auth token found. Please log in first.");
+        // Keep the dummy note active if no backend token exists
         return;
       }
       setError("");
       const { data } = await axios.get(`${import.meta.env.VITE_API_URL || ""}/api/notes`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      setNotes(data || []);
-    } catch (err) {
-      setError("Failed to fetch notes");
+      if (data && data.length > 0) {
+        setNotes(data);
+      }
+    } catch {
+      console.warn("Failed to fetch notes, using dummy / local notes");
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchNotes();
   }, [token]);
 
@@ -176,17 +210,15 @@ export default function App() {
   const handleDelete = async (id) => {
     try {
       const activeToken = localStorage.getItem("token");
-      if (!activeToken) {
-        setError("No Auth Token found. Please log in first.");
-        return;
+      if (activeToken) {
+        await axios.delete(`${import.meta.env.VITE_API_URL || ""}/api/notes/${id}`, {
+          headers: { Authorization: `Bearer ${activeToken}` },
+        });
       }
-      await axios.delete(`${import.meta.env.VITE_API_URL || ""}/api/notes/${id}`, {
-        headers: { Authorization: `Bearer ${activeToken}` },
-      });
-      setNotes(notes.filter((note) => note._id !== id));
-    } catch (err) {
-      setError("Failed to delete Note");
+    } catch {
+      console.warn("Failed to delete Note from backend, deleting locally");
     }
+    setNotes((prev) => prev.filter((note) => note._id !== id));
   };
 
   // Handle Note Addition
@@ -197,47 +229,65 @@ export default function App() {
       return;
     }
 
+    const newId = "note-" + Date.now();
+    const newNote = {
+      _id: newId,
+      title: addTitle,
+      description: addDescription,
+      updatedAt: new Date().toISOString()
+    };
+
     try {
       const activeToken = localStorage.getItem("token");
-      if (!activeToken) {
-        setError("No Auth Token found. Please log in first.");
-        return;
+      if (activeToken) {
+        const { data } = await axios.post(`${import.meta.env.VITE_API_URL || ""}/api/notes`, {
+          title: addTitle,
+          description: addDescription
+        }, {
+          headers: { Authorization: `Bearer ${activeToken}` }
+        });
+        newNote._id = data._id;
+        newNote.updatedAt = data.updatedAt;
       }
-
-      const { data } = await axios.post(`${import.meta.env.VITE_API_URL || ""}/api/notes`, {
-        title: addTitle,
-        description: addDescription
-      }, {
-        headers: { Authorization: `Bearer ${activeToken}` }
-      });
-
-      // Save note configuration (checklist, numbering)
-      setNoteConfigs((prev) => {
-        const updated = {
-          ...prev,
-          [data._id]: {
-            isChecklist: addIsChecklist,
-            isNumbered: addIsNumbered,
-            checkedIndices: []
-          }
-        };
-        localStorage.setItem("notes_configs_map", JSON.stringify(updated));
-        return updated;
-      });
-
-      // Add new note to the list
-      setNotes((prev) => [data, ...prev]);
-      
-      // Close modal and clear inputs
-      setIsAddModalOpen(false);
-      setAddTitle("");
-      setAddDescription("");
-      setAddIsChecklist(false);
-      setAddIsNumbered(false);
-      setError("");
-    } catch (err) {
-      setError("Failed to create Note");
+    } catch {
+      console.warn("Failed to create Note on backend, saving locally");
     }
+
+    // Save note configuration (checklist, numbering)
+    setNoteConfigs((prev) => {
+      const updated = {
+        ...prev,
+        [newNote._id]: {
+          isChecklist: addIsChecklist,
+          isNumbered: addIsNumbered,
+          checkedIndices: []
+        }
+      };
+      localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+      return updated;
+    });
+
+    // Save priority
+    setNotePriorities((prev) => {
+      const updated = {
+        ...prev,
+        [newNote._id]: addPriority
+      };
+      localStorage.setItem("notes_priorities_map", JSON.stringify(updated));
+      return updated;
+    });
+
+    // Add new note to the list
+    setNotes((prev) => [newNote, ...prev]);
+    
+    // Close modal and clear inputs
+    setIsAddModalOpen(false);
+    setAddTitle("");
+    setAddDescription("");
+    setAddIsChecklist(false);
+    setAddIsNumbered(false);
+    setAddPriority("medium");
+    setError("");
   };
 
   // Handle Note Updating (Edit)
@@ -248,48 +298,64 @@ export default function App() {
       return;
     }
 
+    const updatedNote = {
+      _id: editId,
+      title: editTitle,
+      description: editDescription,
+      updatedAt: new Date().toISOString()
+    };
+
     try {
       const activeToken = localStorage.getItem("token");
-      if (!activeToken) {
-        setError("No Auth Token found. Please log in first.");
-        return;
+      if (activeToken) {
+        const { data } = await axios.put(`${import.meta.env.VITE_API_URL || ""}/api/notes/${editId}`, {
+          title: editTitle,
+          description: editDescription
+        }, {
+          headers: { Authorization: `Bearer ${activeToken}` }
+        });
+        updatedNote.updatedAt = data.updatedAt;
       }
-
-      const { data } = await axios.put(`${import.meta.env.VITE_API_URL || ""}/api/notes/${editId}`, {
-        title: editTitle,
-        description: editDescription
-      }, {
-        headers: { Authorization: `Bearer ${activeToken}` }
-      });
-
-      // Update note configuration (checklist, numbering)
-      setNoteConfigs((prev) => {
-        const updated = {
-          ...prev,
-          [editId]: {
-            ...(prev[editId] || { checkedIndices: [] }),
-            isChecklist: editIsChecklist,
-            isNumbered: editIsNumbered
-          }
-        };
-        localStorage.setItem("notes_configs_map", JSON.stringify(updated));
-        return updated;
-      });
-
-      // Update the modified note in the list
-      setNotes((prev) => prev.map((note) => note._id === editId ? data : note));
-      
-      // Close modal and clear inputs
-      setIsEditModalOpen(false);
-      setEditId("");
-      setEditTitle("");
-      setEditDescription("");
-      setEditIsChecklist(false);
-      setEditIsNumbered(false);
-      setError("");
-    } catch (err) {
-      setError("Failed to edit Note");
+    } catch {
+      console.warn("Failed to edit Note on backend, updating locally");
     }
+
+    // Update note configuration (checklist, numbering)
+    setNoteConfigs((prev) => {
+      const updated = {
+        ...prev,
+        [editId]: {
+          ...(prev[editId] || { checkedIndices: [] }),
+          isChecklist: editIsChecklist,
+          isNumbered: editIsNumbered
+        }
+      };
+      localStorage.setItem("notes_configs_map", JSON.stringify(updated));
+      return updated;
+    });
+
+    // Update priority
+    setNotePriorities((prev) => {
+      const updated = {
+        ...prev,
+        [editId]: editPriority
+      };
+      localStorage.setItem("notes_priorities_map", JSON.stringify(updated));
+      return updated;
+    });
+
+    // Update the modified note in the list
+    setNotes((prev) => prev.map((note) => note._id === editId ? { ...note, ...updatedNote } : note));
+    
+    // Close modal and clear inputs
+    setIsEditModalOpen(false);
+    setEditId("");
+    setEditTitle("");
+    setEditDescription("");
+    setEditIsChecklist(false);
+    setEditIsNumbered(false);
+    setEditPriority("medium");
+    setError("");
   };
 
   // Toggle note Pin state
@@ -303,14 +369,49 @@ export default function App() {
     });
   };
 
-  // Split notes into pinned and other notes
-  const pinnedNotes = notes.filter((note) => pinnedIds.includes(note._id));
-  const regularNotes = notes.filter((note) => !pinnedIds.includes(note._id));
+  // Split notes into pinned and other notes, applying priority filter
+  const filteredNotes = notes.filter((note) => {
+    if (priorityFilter === 'all') return true;
+    return getNotePriority(note) === priorityFilter;
+  });
+
+  const pinnedNotes = filteredNotes.filter((note) => pinnedIds.includes(note._id));
+  const regularNotes = filteredNotes.filter((note) => !pinnedIds.includes(note._id));
 
   // Render a single Note Card
   const renderNoteCard = (note, index) => {
     const isPinned = pinnedIds.includes(note._id);
-    const colorPreset = colors[index % colors.length];
+
+    // Get priority and preset configuration
+    const priority = getNotePriority(note);
+    let colorPreset = colors[index % colors.length];
+
+    if (priority === 'high') {
+      colorPreset = colors[3]; // Rose
+    } else if (priority === 'low') {
+      colorPreset = colors[2]; // Sky
+    } else {
+      colorPreset = colors[0]; // Amber
+    }
+
+    // Define priority-specific badge classes and dots
+    const priorityInfo = {
+      high: {
+        label: 'High',
+        badgeClass: 'bg-rose-100/60 border-rose-200/60 text-rose-800',
+        dotClass: 'bg-rose-500'
+      },
+      medium: {
+        label: 'Medium',
+        badgeClass: 'bg-amber-100/60 border-amber-200/60 text-amber-800',
+        dotClass: 'bg-amber-500'
+      },
+      low: {
+        label: 'Low',
+        badgeClass: 'bg-sky-100/60 border-sky-200/60 text-sky-800',
+        dotClass: 'bg-sky-500'
+      }
+    }[priority];
     
     // Read config for this note
     const config = noteConfigs[note._id] || { isChecklist: false, isNumbered: false, checkedIndices: [] };
@@ -389,6 +490,14 @@ export default function App() {
         </div>
 
         <div className="pt-2">
+          {/* Priority Badge */}
+          <div className="mb-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border ${priorityInfo.badgeClass}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${priorityInfo.dotClass}`} />
+              {priorityInfo.label} Priority
+            </span>
+          </div>
+
           {/* Note Title */}
           <h3 className={`text-lg font-bold text-stone-950 tracking-tight mb-3 group-hover:${colorPreset.titleColor} transition-colors duration-200 line-clamp-1 pr-6`}>
             {note.title || <span className="italic text-stone-400 font-normal">Untitled Note</span>}
@@ -419,7 +528,7 @@ export default function App() {
                             const updated = {
                               ...prev,
                               [note._id]: {
-                                ...(prev[note._id] || { isChecklist: true, isNumbered: false }),
+                                ...(prev[note._id] || { isChecklist: true, isNumbered: false, checkedIndices: [] }),
                                 checkedIndices: nextChecked
                               }
                             };
@@ -463,10 +572,11 @@ export default function App() {
                 setEditId(note._id);
                 setEditTitle(note.title);
                 setEditDescription(note.description);
-                // Pre-fill the edit checkboxes from noteConfig
+                // Pre-fill the edit checkboxes and priority
                 const noteConfig = noteConfigs[note._id] || { isChecklist: false, isNumbered: false };
                 setEditIsChecklist(noteConfig.isChecklist);
                 setEditIsNumbered(noteConfig.isNumbered);
+                setEditPriority(notePriorities[note._id] || "medium");
                 setIsEditModalOpen(true);
               }}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold ${colorPreset.buttonText} ${colorPreset.buttonBg} rounded-lg transition-all duration-200 cursor-pointer shadow-xs active:scale-95`}
@@ -522,6 +632,62 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {/* Filter Features Based on Priority */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 p-4 bg-white/60 border border-stone-200/80 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.02)] backdrop-blur-xs" id="priority-filter-bar">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-widest text-stone-500">Filter by Priority:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setPriorityFilter('all')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold tracking-tight border transition-all duration-200 cursor-pointer ${
+                priorityFilter === 'all'
+                  ? 'bg-stone-900 border-stone-900 text-white shadow-sm'
+                  : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+              }`}
+              id="filter-priority-all"
+            >
+              All ({notes.length})
+            </button>
+            <button
+              onClick={() => setPriorityFilter('high')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold tracking-tight border transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                priorityFilter === 'high'
+                  ? 'bg-rose-500 border-rose-500 text-white shadow-sm'
+                  : 'bg-rose-50/50 hover:bg-rose-50 border-rose-100 text-rose-800'
+              }`}
+              id="filter-priority-high"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${priorityFilter === 'high' ? 'bg-white' : 'bg-rose-500'}`} />
+              High ({notes.filter((note) => getNotePriority(note) === 'high').length})
+            </button>
+            <button
+              onClick={() => setPriorityFilter('medium')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold tracking-tight border transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                priorityFilter === 'medium'
+                  ? 'bg-amber-500 border-amber-500 text-stone-950 shadow-sm'
+                  : 'bg-amber-50/50 hover:bg-amber-50 border-amber-100 text-amber-800'
+              }`}
+              id="filter-priority-medium"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${priorityFilter === 'medium' ? 'bg-stone-950' : 'bg-amber-500'}`} />
+              Medium ({notes.filter((note) => getNotePriority(note) === 'medium').length})
+            </button>
+            <button
+              onClick={() => setPriorityFilter('low')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold tracking-tight border transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                priorityFilter === 'low'
+                  ? 'bg-sky-500 border-sky-500 text-white shadow-sm'
+                  : 'bg-sky-50/50 hover:bg-sky-50 border-sky-100 text-sky-800'
+              }`}
+              id="filter-priority-low"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${priorityFilter === 'low' ? 'bg-white' : 'bg-sky-400'}`} />
+              Low ({notes.filter((note) => getNotePriority(note) === 'low').length})
+            </button>
+          </div>
+        </div>
 
         {/* Custom styled error notification element */}
         {error && (
@@ -583,8 +749,8 @@ export default function App() {
 
       {/* --- ADD NOTE MODAL --- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in" id="add-note-modal">
-          <div className="bg-white border border-stone-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-scale-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs" id="add-note-modal">
+          <div className="bg-white border border-stone-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100 bg-stone-50/50">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-amber-500/10 text-amber-600 rounded-lg">
@@ -597,6 +763,7 @@ export default function App() {
                   setIsAddModalOpen(false);
                   setAddIsChecklist(false);
                   setAddIsNumbered(false);
+                  setAddPriority("medium");
                 }}
                 className="text-stone-400 hover:text-stone-700 p-1 rounded-lg hover:bg-stone-100 cursor-pointer transition-colors"
               >
@@ -629,6 +796,49 @@ export default function App() {
                   className="w-full bg-stone-50/50 border border-stone-200 text-stone-900 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
                   required
                 />
+              </div>
+
+              {/* Priority Selector based on beautiful colors */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Priority level</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddPriority("low")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      addPriority === "low"
+                        ? "bg-sky-50 border-sky-300 text-sky-800 shadow-xs animate-pulse"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                    Low
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddPriority("medium")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      addPriority === "medium"
+                        ? "bg-amber-50 border-amber-300 text-amber-800 shadow-xs"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    Medium
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddPriority("high")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      addPriority === "high"
+                        ? "bg-rose-50 border-rose-300 text-rose-800 shadow-xs"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    High
+                  </button>
+                </div>
               </div>
 
               {/* Note Formatting Options */}
@@ -667,6 +877,7 @@ export default function App() {
                     setIsAddModalOpen(false);
                     setAddIsChecklist(false);
                     setAddIsNumbered(false);
+                    setAddPriority("medium");
                   }}
                   className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200/80 text-stone-700 font-semibold rounded-xl text-sm transition-colors cursor-pointer"
                 >
@@ -686,8 +897,8 @@ export default function App() {
 
       {/* --- EDIT NOTE MODAL --- */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in" id="edit-note-modal">
-          <div className="bg-white border border-stone-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-scale-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs" id="edit-note-modal">
+          <div className="bg-white border border-stone-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100 bg-stone-50/50">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-amber-500/10 text-amber-600 rounded-lg">
@@ -728,6 +939,49 @@ export default function App() {
                   className="w-full bg-stone-50/50 border border-stone-200 text-stone-900 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
                   required
                 />
+              </div>
+
+              {/* Priority Selector based on beautiful colors */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Priority level</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditPriority("low")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      editPriority === "low"
+                        ? "bg-sky-50 border-sky-300 text-sky-800 shadow-xs"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    Low
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditPriority("medium")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      editPriority === "medium"
+                        ? "bg-amber-50 border-amber-300 text-amber-800 shadow-xs"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    Medium
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditPriority("high")}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                      editPriority === "high"
+                        ? "bg-rose-50 border-rose-300 text-rose-800 shadow-xs"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    High
+                  </button>
+                </div>
               </div>
 
               {/* Note Formatting Options */}
@@ -782,4 +1036,3 @@ export default function App() {
     </div>
   );
 }
-

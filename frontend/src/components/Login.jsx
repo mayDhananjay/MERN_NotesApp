@@ -1,4 +1,3 @@
-import React from 'react'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios'
@@ -6,6 +5,7 @@ import axios from 'axios'
 const Login = ({setUser}) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const apiUrl = import.meta.env.VITE_API_URL || "";
     
     const [error, setError] = useState('')
     const navigate = useNavigate()
@@ -13,7 +13,7 @@ const Login = ({setUser}) => {
     const handleSubmmit = async (e) => {
         e.preventDefault();
         try {
-            const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/users/login`, {
+            const { data } = await axios.post(`${apiUrl}/api/users/login`, {
                 email, password
             })
             localStorage.setItem("token", data.token)

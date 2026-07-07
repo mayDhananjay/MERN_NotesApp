@@ -10,17 +10,21 @@ import axios from 'axios'
 function App() {
   const [user,setUser]=useState(null)
   const [loading ,setLoading] =useState((true))
+  const apiUrl = import.meta.env.VITE_API_URL || "";
   useEffect(()=>{
     const fetchUser=async()=>{
     try{
       const token = localStorage.getItem("token");
-      if (!token)return;
+      if (!token){
+        setLoading(false);
+        return;
+      }
       const 
-      {data}= await axios.get(`${import.meta.env.VITE_API_URL}/api/users/me`,{
+      {data}= await axios.get(`${apiUrl}/api/users/me`,{
         headers:{Authorization: `Bearer ${token}`}
       })
       setUser(data)
-    }catch(err){
+    }catch{
       localStorage.removeItem("token")
 
     }
@@ -31,7 +35,7 @@ function App() {
   fetchUser();
 
 
-  },[]);
+  },[apiUrl]);
   if(loading){
     return(
       <div className=' min-h-screen bg-gray-900 flex items-center justify-center'>
