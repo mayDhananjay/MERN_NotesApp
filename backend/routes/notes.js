@@ -4,6 +4,26 @@ import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
+//get Shared notes
+router.get("/share/:id", async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+
+    if (!note) {
+      return res.status(404).json({
+        message: "Note not found",
+      });
+    }
+
+    res.status(200).json(note);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+});
+
 //get all notes
 router.get('/',protect,async(req,res)=>{
     try{
