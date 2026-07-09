@@ -5,6 +5,7 @@ import Login from './components/Login'
 import Register from './components/Register'
 import Home from './components/Home'
 import axios from 'axios'
+import SharePage from './components/SharePage'
 
 
 function App() {
@@ -54,6 +55,7 @@ function App() {
         <Route path="/login" element={user ? <Navigate to='/' />:<Login setUser={setUser}/> } />
          <Route path="/register" element={user ? <Navigate to='/' />:<Register setUser={setUser}/> } />
          <Route path ="/" element={user ? <Home />:<Navigate to ='/login' />}      />
+        <Route path="/share/:id" element={<SharePage />} />
       </Routes>
       
       </div>
