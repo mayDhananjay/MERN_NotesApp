@@ -74,6 +74,7 @@ const Navbar = ({ user, setUser, searchQuery, setSearchQuery }) => {
           )}
         </div>
       </div>
+      
     </nav>
   );
 };
