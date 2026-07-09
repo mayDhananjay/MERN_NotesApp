@@ -106,7 +106,9 @@ export default function SharePage() {
       try {
         setLoading(true);
         setError("");
-        const { data } = await axios.get(`${import.meta.env.VITE_API_URL || ""}/api/notes/share/${id}`);
+       const { data } = await axios.get(
+  `${import.meta.env.VITE_API_URL || ""}/api/notes/share/${id}`
+);
         setNote(data);
       } catch (err) {
         console.error("Failed to fetch shared note:", err);
