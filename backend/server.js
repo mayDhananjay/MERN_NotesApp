@@ -16,7 +16,8 @@ app.use(cors({
         "http://localhost:5173",
         "https://mern-notes-app-smcs.vercel.app",
         "https://mern-notes-app-kx7p.vercel.app",
-        "https://mern-notes-app-z85c.vercel.app"
+        "https://mern-notes-app-z85c.vercel.app",
+        "https://notes-app-gj5v.vercel.app"
     ],
     credentials: true
 }));
