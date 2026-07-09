@@ -1037,7 +1037,6 @@
 //   );
 // }
 
-
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { 
@@ -1478,21 +1477,7 @@ export default function App() {
 
   // Share Note Link generator & clipboard copy action
   const openShareDialog = (note) => {
-    const config = noteConfigs[note._id] || { isChecklist: false, isNumbered: false, checkedIndices: [] };
-    const priority = notePriorities[note._id] || "medium";
-    
-    const noteData = {
-      title: note.title,
-      description: note.description,
-      isChecklist: config.isChecklist,
-      isNumbered: config.isNumbered,
-      checkedIndices: config.checkedIndices,
-      priority: priority,
-      updatedAt: note.updatedAt || new Date().toISOString()
-    };
-    
-    const base64Data = encodeNote(noteData);
-    const shareUrl = `${window.location.origin}/?shared=b64_${base64Data}`;
+    const shareUrl = `${window.location.origin}/share/${note._id}`;
     setSharingUrl(shareUrl);
     setIsShareModalOpen(true);
     setCopied(false);
@@ -2364,7 +2349,7 @@ export default function App() {
 
             <div className="p-6 space-y-4">
               <p className="text-sm text-stone-600 leading-relaxed">
-                This link allows anyone to view a read-only copy of this note. It contains the note's content directly in the URL and doesn't require logging in!
+                This link allows anyone with the URL to view a read-only copy of this note without logging in!
               </p>
 
               <div className="flex items-center gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
@@ -2406,3 +2391,4 @@ export default function App() {
     </div>
   );
 }
+
