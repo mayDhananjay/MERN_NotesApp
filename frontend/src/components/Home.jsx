@@ -1039,7 +1039,6 @@
 
 
 
-
 import { useEffect, useState } from "react";
 import {
   Pencil,
@@ -1156,6 +1155,54 @@ const colors = [
   },
 ];
 
+// UTF-8 friendly and URL-safe Base64 encoding/decoding for local share links
+const encodeNote = (note) => {
+  try {
+    const data = {
+      title: note.title || "",
+      description: note.description || "",
+      isChecklist: !!note.isChecklist,
+      isNumbered: !!note.isNumbered,
+      checkedIndices: note.checkedIndices || [],
+      priority: note.priority || "medium",
+      updatedAt: note.updatedAt || new Date().toISOString()
+    };
+    const jsonStr = JSON.stringify(data);
+    const utf8Bytes = new TextEncoder().encode(jsonStr);
+    let binary = "";
+    const len = utf8Bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(utf8Bytes[i]);
+    }
+    return btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  } catch (err) {
+    console.error("Failed to encode note:", err);
+    return "";
+  }
+};
+
+const decodeNote = (str) => {
+  try {
+    let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) {
+      base64 += "=";
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const jsonStr = new TextDecoder().decode(bytes);
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error("Failed to decode note:", err);
+    return null;
+  }
+};
+
 export default function App() {
   // Navigation Routing States
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -1223,23 +1270,35 @@ export default function App() {
   // Fetch read-only shared note
   useEffect(() => {
     if (isSharedRoute && sharedNoteId) {
-      setLoadingShared(true);
-      setSharedError("");
-      fetch(`/api/notes/shared/${sharedNoteId}`)
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error("Shared note not found or link has expired.");
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setSharedNote(data);
-          setLoadingShared(false);
-        })
-        .catch((err) => {
-          setSharedError(err.message || "Failed to load shared note.");
-          setLoadingShared(false);
-        });
+      if (sharedNoteId.startsWith("b64_")) {
+        const base64Str = sharedNoteId.slice(4);
+        const decoded = decodeNote(base64Str);
+        if (decoded) {
+          setSharedNote(decoded);
+          setSharedError("");
+        } else {
+          setSharedError("Invalid shared note link or data corruption.");
+        }
+        setLoadingShared(false);
+      } else {
+        setLoadingShared(true);
+        setSharedError("");
+        fetch(`/api/notes/shared/${sharedNoteId}`)
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error("Shared note not found or link has expired.");
+            }
+            return res.json();
+          })
+          .then((data) => {
+            setSharedNote(data);
+            setLoadingShared(false);
+          })
+          .catch((err) => {
+            setSharedError(err.message || "Failed to load shared note.");
+            setLoadingShared(false);
+          });
+      }
     }
   }, [pathname, isSharedRoute, sharedNoteId]);
 
@@ -1622,45 +1681,66 @@ export default function App() {
 
   // Trigger Share modal setup
   const openShareDialog = async (note) => {
-    if (!authToken) {
-      // Allow sharing offline note by publishing anonymously to the backend
+    // Generate base64 link so it is instantly viewable without login and offline-safe
+    const base64Data = encodeNote(note);
+    const shareUrl = `${window.location.origin}/shared/b64_${base64Data}`;
+
+    // Helper for legacy browsers / fallback copy
+    const copyUsingFallback = (text) => {
       try {
-        const res = await fetch("/api/notes/shared", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: note.title,
-            description: note.description,
-            isChecklist: note.isChecklist,
-            isNumbered: note.isNumbered,
-            checkedIndices: note.checkedIndices,
-            priority: note.priority,
-          }),
-        });
-        if (res.ok) {
-          const anonymousSharedNote = await res.json();
-          setSharingNote(anonymousSharedNote);
-          setIsShareModalOpen(true);
-          setCopiedLink(false);
-          setSuccessMsg("Anonymous share link created successfully!");
-          setTimeout(() => setSuccessMsg(""), 4000);
-        } else {
-          throw new Error("Could not share note anonymously.");
-        }
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand("copy");
+        document.body.removeChild(textArea);
+        return successful;
       } catch (err) {
-        setError(err.message || "Failed to create public share link.");
+        console.error("Fallback copy failed", err);
+        return false;
       }
-      return;
+    };
+
+    // Copy to clipboard immediately
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl)
+        .then(() => {
+          setCopiedLink(true);
+          setSuccessMsg("Share link copied to clipboard!");
+          setTimeout(() => setSuccessMsg(""), 4000);
+        })
+        .catch(() => {
+          const ok = copyUsingFallback(shareUrl);
+          if (ok) {
+            setCopiedLink(true);
+            setSuccessMsg("Share link copied to clipboard!");
+            setTimeout(() => setSuccessMsg(""), 4000);
+          }
+        });
+    } else {
+      const ok = copyUsingFallback(shareUrl);
+      if (ok) {
+        setCopiedLink(true);
+        setSuccessMsg("Share link copied to clipboard!");
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
     }
-    setSharingNote(note);
+
+    setSharingNote({
+      ...note,
+      shareUrl
+    });
     setIsShareModalOpen(true);
-    setCopiedLink(false);
   };
 
   // Copy share link helper
   const handleCopyShareLink = () => {
     if (!sharingNote) return;
-    const shareUrl = `${window.location.origin}/shared/${sharingNote._id}`;
+    const shareUrl = sharingNote.shareUrl || `${window.location.origin}/shared/${sharingNote._id}`;
     
     const copyUsingFallback = (text) => {
       try {
@@ -2367,7 +2447,7 @@ export default function App() {
                   <input
                     type="text"
                     readOnly
-                    value={`${window.location.origin}/shared/${sharingNote._id}`}
+                    value={sharingNote.shareUrl || `${window.location.origin}/shared/${sharingNote._id}`}
                     className="flex-1 bg-stone-50/70 border border-stone-200 text-stone-800 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none select-all font-mono"
                   />
                   <button
