@@ -1039,6 +1039,7 @@
 
 
 
+
 import { useEffect, useState } from "react";
 import {
   Pencil,
@@ -1883,42 +1884,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Offline Alert Banner if logged out */}
-      {!user && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 text-stone-900 relative z-30 shadow-xs">
-          <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-center sm:text-left">
-            <div className="flex items-center gap-2">
-              <Globe className="w-4.5 h-4.5 text-amber-600 shrink-0" />
-              <p className="text-xs font-bold text-stone-800">
-                Running in Local Mode (Offline). Register or login to sync your notes to the cloud and share them with custom links!
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setAuthMode("login");
-                  setIsAuthModalOpen(true);
-                  setAuthError("");
-                }}
-                className="text-xs font-bold text-stone-600 hover:text-stone-900 px-2.5 py-1.5 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-              >
-                Log In
-              </button>
-              <button
-                onClick={() => {
-                  setAuthMode("signup");
-                  setIsAuthModalOpen(true);
-                  setAuthError("");
-                }}
-                className="bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 text-xs font-black px-3.5 py-1.5 rounded-lg transition-all cursor-pointer shadow-xs"
-              >
-                Sign Up
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
         {/* Header navigation section */}
         <header className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-10 pb-6 border-b border-stone-200" id="app-header">
@@ -2712,4 +2677,3 @@ export default function App() {
     );
   }
 }
-
